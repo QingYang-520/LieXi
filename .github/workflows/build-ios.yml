@@ -73,8 +73,12 @@ jobs:
       - name: Locate Xcode project
         run: |
           set -e
-          XCODEPROJ=$(find build/iOS -name "*.xcodeproj" -maxdepth 3 | head -1)
-          echo "找到工程: $XCODEPROJ"
+          echo "=== 所有 .xcodeproj（看清嵌套结构）==="
+          find build/iOS -name "*.xcodeproj" -maxdepth 5
+          # Unity 生成的 .xcodeproj 里可能又套一层同名 .xcodeproj，
+          # 真正的 project.pbxproj 在内层。所以要找"含 project.pbxproj 的那个"
+          XCODEPROJ=$(find build/iOS -name "project.pbxproj" -maxdepth 6 | head -1 | xargs dirname)
+          echo "真正含 pbxproj 的工程: $XCODEPROJ"
           echo "XCODEPROJ=$XCODEPROJ" >> $GITHUB_ENV
 
       - name: xcodebuild (unsigned .app)
