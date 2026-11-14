@@ -32,11 +32,12 @@ jobs:
           restore-keys: |
             Library-LieXi-iOS-
 
-      # Personal 许可证：用邮箱+密码在线激活（去掉 .ulf，避免冲突）
-      # 账号 yq114514@hotmail.com 是国际版 Personal，标准做法就是邮箱+密码
+      # Personal 许可证标准姿势：邮箱+密码（在线激活）+ UNITY_LICENSE（存放）
+      # 之前一直 400 是因为邮箱填错了，现在邮箱已修正为 yq114514@hotmail.com
       - name: Build iOS (generate Xcode project)
         uses: game-ci/unity-builder@v4
         env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
