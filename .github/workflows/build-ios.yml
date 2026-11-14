@@ -1,0 +1,128 @@
+name: Build iOS (TrollStore)
+
+# 手动触发 + push 到 main 时自动触发
+on:
+  workflow_dispatch:      # 可在 Actions 页面手动点按钮
+  push:
+    branches: [ main ]
+    paths:
+      - "Assets/**"
+      - "ProjectSettings/**"
+      - "Packages/**"
+      - ".github/workflows/**"
+
+jobs:
+  buildIOS:
+    name: Build iOS IPA (TrollStore)
+    runs-on: macos-latest   # iOS 必须用 macOS runner（Xcode 编译）
+
+    steps:
+      # 1. 检出代码（要完整历史 + LFS，Unity 资源可能用 LFS）
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          lfs: true
+
+      # 2. 缓存 Unity 库（加速二次构建，省 macOS 计费分钟数）
+      - name: Cache Unity Library
+        uses: actions/cache@v4
+        with:
+          path: Library
+          key: Library-${{ hashFiles('Assets/**', 'Packages/**', 'ProjectSettings/**') }}
+          restore-keys: |
+            Library-
+
+      # 3. 激活 Unity 许可证（个人版免费，见下方 Secrets 说明）
+      - name: Activate Unity License
+        uses: game-ci/unity-activate@v2
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+
+      # 4. 用 Unity 编译 iOS（GameCI，未签名）
+      - name: Build iOS (Unity)
+        uses: game-ci/unity-builder@v4
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
+        with:
+          # ⚠️ 你项目的 Unity 版本（含国内版 c1 后缀）
+          unityVersion: 2022.3.62f3c1
+          targetPlatform: iOS
+          buildMethod: BuildScript.PerformBuild
+          # iOS 不在此步签名，交给后面 ldid
+          allowDirtyBuild: true
+
+      # 5. 用 Xcode 把 Unity 产出的工程编译成「未签名 .app」
+      - name: Xcode build (unsigned .app)
+        run: |
+          set -e
+          echo "=== 查找 Unity 产出的 Xcode 工程 ==="
+          XCODEPROJ=$(find build -name "*.xcodeproj" -maxdepth 4 | head -1)
+          echo "Xcode 工程: $XCODEPROJ"
+          WORKSPACE_DIR=$(dirname "$XCODEPROJ")
+          echo "工程目录: $WORKSPACE_DIR"
+
+          echo "=== xcodebuild 编译（关闭签名）==="
+          xcodebuild \
+            -project "$XCODEPROJ" \
+            -scheme "Unity-iPhone" \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination "generic/platform=iOS" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGN_IDENTITY="" \
+            -derivedDataPath build/DerivedData \
+            build
+
+          echo "=== 查找编译出的 .app ==="
+          APP=$(find build/DerivedData -name "*.app" -maxdepth 8 | head -1)
+          echo "找到 .app: $APP"
+          echo "APP_PATH=$APP" >> $GITHUB_ENV
+
+      # 6. ldid 伪签名 + 打包成 TrollStore 可用的 .ipa
+      - name: ldid fake-sign & package IPA
+        run: |
+          set -e
+          echo "=== 安装 ldid ==="
+          brew install ldid
+
+          APP="${{ env.APP_PATH }}"
+          echo "伪签名 .app: $APP"
+
+          echo "=== ldid 伪签名（-S 不带 entitlements，巨魔可用）==="
+          ldid -S "$APP"
+
+          echo "=== 打包 Payload -> .ipa ==="
+          mkdir -p build/Payload
+          cp -R "$APP" build/Payload/
+          cd build
+          IPA_NAME="LieXi-trollstore-$(date +%Y%m%d)-${GITHUB_RUN_NUMBER}.ipa"
+          zip -r -q "$IPA_NAME" Payload
+          echo "产出: $IPA_NAME"
+          mv "$IPA_NAME" ../
+          cd ..
+
+      # 7. 上传 IPA 作为构建产物（Actions 页面可下载）
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LieXi-trollstore-ipa
+          path: LieXi-trollstore-*.ipa
+          retention-days: 7
+          if-no-files-found: error
+
+      # 8. 用完归还 Unity 许可证（个人版多机器会占用席位）
+      - name: Return Unity License
+        if: always()
+        uses: game-ci/unity-return-license@v2
+        env:
+          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
+          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
+          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
+          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
