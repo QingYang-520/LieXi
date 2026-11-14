@@ -32,14 +32,12 @@ jobs:
           restore-keys: |
             Library-LieXi-iOS-
 
-      # builder 在容器内自己激活许可证（传入邮箱密码 + 许可证内容）
-      # 不再单独跑 unity-activate —— 那是导致激活状态丢失的原因
+      # Personal 许可证：只用 UNITY_LICENSE（.ulf 内容）激活，不带邮箱密码
+      # 之前邮箱密码 + 许可证一起填反而冲突，导致激活失败
       - name: Build iOS (generate Xcode project)
         uses: game-ci/unity-builder@v4
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
         with:
           unityVersion: 2022.3.62f1
           targetPlatform: iOS
