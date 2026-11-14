@@ -51,7 +51,7 @@ public static class BuildScript
         };
 
         // 关键：iOS 在 CI 上做「未签名」构建，签名交给后面的 ldid
-        EditorUserBuildSettings.iOSBuildType = iOSTargetType.Release;
+        // 未签名由 workflow 的 CODE_SIGNING_ALLOWED=NO 控制，这里关闭自动签名即可
         PlayerSettings.iOS.appleEnableAutomaticSigning = false;
 
         var report = BuildPipeline.BuildPlayer(options);
