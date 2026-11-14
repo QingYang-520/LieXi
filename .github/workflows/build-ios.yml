@@ -54,6 +54,8 @@ jobs:
           path: build/iOS
           retention-days: 1
           if-no-files-found: error
+          # 关键：Xcode 工程里 project.pbxproj 是隐藏文件，必须包含否则工程缺心脏
+          include-hidden-files: true
 
   # ============ 阶段 2：Mac 编译出未签名 .app → ldid → 巨魔 ipa ============
   build-ipa:
