@@ -1,7 +1,7 @@
 name: Build iOS (TrollStore)
 
 on:
-  workflow_dispatch:      # 手动点按钮触发（推荐先用这个测试）
+  workflow_dispatch:      # 手动点按钮触发（推荐测试用）
   push:
     branches: [ main ]
     paths:
@@ -12,6 +12,7 @@ on:
 
 jobs:
   # ============ 阶段 1：Linux 生成 Xcode 工程（免费额度）============
+  # 关键：不单独 activate，让 builder 在同一个容器内自己激活（避免激活状态丢失）
   generate-xcode:
     name: 1. Generate Xcode project (Linux, free)
     runs-on: ubuntu-latest
@@ -31,31 +32,19 @@ jobs:
           restore-keys: |
             Library-LieXi-iOS-
 
-      # GameCI 是 Docker 容器，只能在 Linux 上跑 —— 所以这一步必须在 ubuntu
-      - name: Activate Unity License
-        uses: game-ci/unity-activate@v2
-        env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
-
-      # 生成 iOS Xcode 工程（iOS 是 Mono 后端，Linux 可生成工程）
-      # ⚠️ 项目是中国版 2022.3.62f3c1，GameCI 官方镜像只有国际版，
-      #    这里用国际版 2022.3.62f1 镜像去打开（小版本一致，一般兼容）
+      # builder 在容器内自己激活许可证（传入邮箱密码 + 许可证内容）
+      # 不再单独跑 unity-activate —— 那是导致激活状态丢失的原因
       - name: Build iOS (generate Xcode project)
         uses: game-ci/unity-builder@v4
         env:
           UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
           UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
           UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
         with:
           unityVersion: 2022.3.62f1
           targetPlatform: iOS
           buildMethod: BuildScript.PerformBuild
           allowDirtyBuild: true
-          # 统一容器内构建路径，避免移交 Mac 后路径错乱（官方提到的坑）
           dockerWorkspacePath: /github/workspace
 
       - name: Upload Xcode project
@@ -65,15 +54,6 @@ jobs:
           path: build/iOS
           retention-days: 1
           if-no-files-found: error
-
-      - name: Return Unity License
-        if: always()
-        uses: game-ci/unity-return-license@v2
-        env:
-          UNITY_LICENSE: ${{ secrets.UNITY_LICENSE }}
-          UNITY_EMAIL: ${{ secrets.UNITY_EMAIL }}
-          UNITY_PASSWORD: ${{ secrets.UNITY_PASSWORD }}
-          UNITY_SERIAL: ${{ secrets.UNITY_SERIAL }}
 
   # ============ 阶段 2：Mac 编译出未签名 .app → ldid → 巨魔 ipa ============
   build-ipa:
@@ -89,7 +69,6 @@ jobs:
           path: build/iOS
 
       - name: Locate Xcode project
-        id: locate
         run: |
           set -e
           XCODEPROJ=$(find build/iOS -name "*.xcodeproj" -maxdepth 3 | head -1)
